@@ -14,7 +14,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 class Settings(BaseSettings):
     app_name: str = "Vision AI API"
-    environment: str = "development"
+    environment: str = "production"
     public_app_url: str = "http://localhost:8000"
     api_prefix: str = "/api"
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'data' / 'vision_ai.db').as_posix()}"

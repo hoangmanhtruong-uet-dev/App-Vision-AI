@@ -15,6 +15,7 @@ os.environ["VISION_AI_DATABASE_URL"] = f"sqlite:///{(TEST_DIR / 'test.db').as_po
 os.environ["VISION_AI_UPLOAD_DIR"] = str(TEST_DIR / "uploads")
 os.environ["VISION_AI_CLOUDINARY_URL"] = ""
 os.environ["VISION_AI_ENCRYPTION_KEY"] = "test-only-encryption-key-32-characters-long"
+os.environ["VISION_AI_ENVIRONMENT"] = "development"
 
 from fastapi.testclient import TestClient  # noqa: E402
 import pyotp  # noqa: E402
@@ -23,11 +24,24 @@ from alembic.config import Config  # noqa: E402
 
 from app.main import app  # noqa: E402
 import app.api as api_module  # noqa: E402
+import app.auth as auth_module  # noqa: E402
 import app.storage as storage_module  # noqa: E402
 from app.gemini import _response_schema  # noqa: E402
-from app.resilience import reset_rate_limits  # noqa: E402
+from app.resilience import client_ip, reset_rate_limits  # noqa: E402
 from app.schemas import AdvancedAnalysisResponse  # noqa: E402
 from app.storage import StorageDeletionError, delete_image  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def clear_security_events() -> None:
+    from sqlalchemy import delete
+
+    from app.database import SessionLocal
+    from app.models import SecurityEvent
+
+    with SessionLocal() as session:
+        session.execute(delete(SecurityEvent))
+        session.commit()
 
 
 alembic_config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -434,3 +448,58 @@ def test_account_email_password_and_deletion_lifecycle() -> None:
         })
         assert deleted.status_code == 200, deleted.text
         assert client.get("/api/auth/me").status_code == 401
+
+
+def test_default_environment_is_production(monkeypatch) -> None:
+    from app.config import Settings
+
+    monkeypatch.delenv("VISION_AI_ENVIRONMENT", raising=False)
+    assert Settings(_env_file=None).environment == "production"
+
+
+def test_password_reset_debug_token_requires_explicit_development(monkeypatch) -> None:
+    email = "debug-token@example.com"
+    with TestClient(app) as client:
+        register(client, email)
+        for environment in ("production", "test", "staging", ""):
+            monkeypatch.setattr(auth_module.settings, "environment", environment)
+            response = client.post("/api/auth/forgot-password", json={"email": email})
+            assert response.status_code == 200, response.text
+            assert response.json()["debug_token"] is None, environment
+
+        monkeypatch.setattr(auth_module.settings, "environment", "Development")
+        response = client.post("/api/auth/forgot-password", json={"email": email})
+        assert response.status_code == 200, response.text
+        assert response.json()["debug_token"]
+
+
+def test_x_forwarded_for_cannot_bypass_login_rate_limit() -> None:
+    payload = {"email": "xff-rate-limit@example.com", "password": "wrong-password"}
+    with TestClient(app) as client:
+        for index in range(5):
+            attempt = client.post(
+                "/api/auth/login", json=payload,
+                headers={"x-forwarded-for": f"203.0.113.{index + 1}"},
+            )
+            assert attempt.status_code == 401, attempt.text
+        blocked = client.post(
+            "/api/auth/login", json=payload,
+            headers={"x-forwarded-for": "198.51.100.200"},
+        )
+        assert blocked.status_code == 429, blocked.text
+
+
+def test_client_ip_ignores_spoofed_forwarded_header() -> None:
+    from starlette.requests import Request
+
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-forwarded-for", b"203.0.113.9, 10.0.0.1")],
+        "client": ("10.0.0.5", 1234),
+        "server": ("testserver", 80),
+        "scheme": "http",
+        "query_string": b"",
+    })
+    assert client_ip(request) == "10.0.0.5"

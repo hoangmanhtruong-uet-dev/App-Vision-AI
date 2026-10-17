@@ -21,6 +21,7 @@ from .config import get_settings
 from .database import get_db
 from .mailer import send_account_email
 from .models import AccountToken, APIKey, Scan, SecurityEvent, TwoFactorRecoveryCode, User, UserSession
+from .resilience import client_ip
 from .schemas import (
     APIKeyCreate,
     APIKeyCreatedResponse,
@@ -67,11 +68,6 @@ def digest(value: str) -> str:
 
 def normalize_email(email: str) -> str:
     return email.strip().casefold()
-
-
-def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    return (forwarded or (request.client.host if request.client else ""))[:80]
 
 
 def record_security_event(
@@ -220,7 +216,7 @@ def _consume_account_token(db: Session, raw: str, purpose: str) -> tuple[Account
 
 
 def _debug_token(raw: str) -> str | None:
-    return raw if settings.environment.casefold() != "production" else None
+    return raw if settings.environment.lower() == "development" else None
 
 
 def _decrypt_user_secret(user: User) -> str:

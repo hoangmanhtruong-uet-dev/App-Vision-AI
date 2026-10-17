@@ -15,8 +15,13 @@ _last_cleanup = 0.0
 
 
 def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    return (forwarded or (request.client.host if request.client else "unknown"))[:80]
+    """Return the peer address resolved by the trusted ASGI server.
+
+    X-Forwarded-For is deliberately ignored because its leftmost entries are
+    client-controlled. Uvicorn runs with --proxy-headers, so request.client
+    already contains the address supplied by the trusted proxy.
+    """
+    return (request.client.host if request.client else "unknown")[:80]
 
 
 def rate_limit_retry_after(request: Request) -> int | None:
