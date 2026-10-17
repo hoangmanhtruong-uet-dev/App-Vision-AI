@@ -251,7 +251,7 @@
 
   function drawer() {
     if (!state.drawerOpen) return '';
-    return `<div class="sheet-backdrop" data-action="close-drawer"><aside class="drawer" onclick="event.stopPropagation()">
+    return `<div class="sheet-backdrop" data-action="close-drawer"><aside class="drawer" data-drawer-panel>
       <div class="row between"><div class="brand" style="padding:0">${icon('frame_inspect')}<span>Vision AI</span></div><button class="icon-btn" data-action="close-drawer">${icon('close')}</button></div>
       <h2>Điều hướng hệ thống</h2>
       ${SCREENS.filter(([route]) => PRODUCT_ROUTES.has(route)).map(([route,label,symbol], index) => `<a class="screen-link ${state.route === route ? 'active' : ''}" href="#/${route}"><span class="screen-number">${String(index + 1).padStart(2,'0')}</span>${icon(symbol)}<span>${label}</span></a>`).join('')}
@@ -1313,6 +1313,12 @@
     render();
   }
 
+  function csvCell(value) {
+    let text = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+
   async function exportResult(format) {
     const result = state.currentResult;
     if (!result) {
@@ -1326,7 +1332,7 @@
     }
     const payload = format === 'json'
       ? JSON.stringify(result, null, 2)
-      : `label,confidence,model\n"${String(result.primary_label).replaceAll('"','""')}",${result.confidence},"${result.model_version}"`;
+      : `label,confidence,model\n${csvCell(result.primary_label)},${Number(result.confidence) || 0},${csvCell(result.model_version)}`;
     const blob = new Blob([format === 'csv' ? '\ufeff' + payload : payload], { type: format === 'json' ? 'application/json' : 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob); link.download = `vision-result.${format}`; link.click();
@@ -1776,6 +1782,7 @@
     app.querySelectorAll('[data-label]').forEach(node => node.addEventListener('click', () => {
       app.querySelectorAll('[data-label]').forEach(item => item.classList.remove('active')); node.classList.add('active');
     }));
+    app.querySelectorAll('[data-drawer-panel]').forEach(node => node.addEventListener('click', event => event.stopPropagation()));
     app.querySelectorAll('[data-action]').forEach(node => node.addEventListener('click', async event => {
       const action = node.dataset.action;
       if (action === 'drawer') { state.drawerOpen = true; render(); }

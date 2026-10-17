@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     upload_dir: Path = BACKEND_DIR / "data" / "uploads"
     max_upload_mb: int = Field(default=15, ge=1, le=100)
     max_image_pixels: int = Field(default=20 * 1024 * 1024, ge=1_000_000)
-    cors_origins: Annotated[list[str], NoDecode] = ["*"]
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     session_cookie_name: str = "vision_session"
     session_hours: int = Field(default=24, ge=1, le=168)
     remember_session_days: int = Field(default=30, ge=1, le=90)
@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     def parse_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("cors_origins")
+    @classmethod
+    def reject_wildcard_origins(cls, value: list[str]) -> list[str]:
+        if "*" in value:
+            raise ValueError("VISION_AI_CORS_ORIGINS không được chứa '*' khi cho phép credentials; liệt kê origin cụ thể.")
         return value
 
     @field_validator("database_url")

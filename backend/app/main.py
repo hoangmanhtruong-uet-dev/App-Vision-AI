@@ -23,6 +23,21 @@ settings = get_settings()
 frontend_dist = Path(__file__).resolve().parents[2] / "dist"
 logger = logging.getLogger("vision_ai")
 
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
+    "worker-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://res.cloudinary.com",
+    "media-src 'self' blob:",
+    "connect-src 'self' https://cdn.jsdelivr.net https://tfhub.dev https://www.kaggle.com https://storage.googleapis.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
 
 def error_response(request: Request, status_code: int, detail: object, code: str, headers: dict | None = None) -> JSONResponse:
     request_id = getattr(request.state, "request_id", uuid4().hex)
@@ -46,13 +61,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=settings.cors_origins != ["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if settings.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 app.include_router(router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
 
@@ -96,6 +112,7 @@ async def security_headers(request: Request, call_next):
             "request_timeout", {"Retry-After": "5"},
         )
     response.headers["X-Request-ID"] = request.state.request_id
+    response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"

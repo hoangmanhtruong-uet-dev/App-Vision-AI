@@ -89,6 +89,20 @@ def scan_response(scan: Scan) -> ScanResponse:
     )
 
 
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value: object) -> object:
+    """Neutralize spreadsheet formulas (CSV injection) in text cells.
+
+    A leading apostrophe makes Excel/Sheets treat the cell as text instead of
+    evaluating =, +, -, @, tab or CR-prefixed content.
+    """
+    if isinstance(value, str) and value.startswith(CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def collection_response(db: Session, collection: Collection) -> CollectionResponse:
     count = db.scalar(
         select(func.count(CollectionItem.id))
@@ -345,13 +359,13 @@ def export_scan(
     writer = csv.writer(output)
     writer.writerow(["id", "label", "confidence", "file_name", "width", "height", "model", "created_at"])
     writer.writerow([
-        scan.id,
-        scan.primary_label,
+        csv_safe(scan.id),
+        csv_safe(scan.primary_label),
         scan.confidence,
-        scan.file_name,
+        csv_safe(scan.file_name),
         scan.width,
         scan.height,
-        scan.model_version,
+        csv_safe(scan.model_version),
         scan.created_at.isoformat(),
     ])
     return Response(

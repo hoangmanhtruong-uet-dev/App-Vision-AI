@@ -16,6 +16,7 @@ os.environ["VISION_AI_UPLOAD_DIR"] = str(TEST_DIR / "uploads")
 os.environ["VISION_AI_CLOUDINARY_URL"] = ""
 os.environ["VISION_AI_ENCRYPTION_KEY"] = "test-only-encryption-key-32-characters-long"
 os.environ["VISION_AI_ENVIRONMENT"] = "development"
+os.environ["VISION_AI_CORS_ORIGINS"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 import pyotp  # noqa: E402
@@ -487,6 +488,67 @@ def test_x_forwarded_for_cannot_bypass_login_rate_limit() -> None:
             headers={"x-forwarded-for": "198.51.100.200"},
         )
         assert blocked.status_code == 429, blocked.text
+
+
+def test_cors_defaults_to_no_cross_origin_access(monkeypatch) -> None:
+    from app.config import Settings
+
+    monkeypatch.delenv("VISION_AI_CORS_ORIGINS", raising=False)
+    assert Settings(_env_file=None).cors_origins == []
+
+
+def test_cors_origins_are_parsed_from_env_and_reject_wildcard(monkeypatch) -> None:
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    monkeypatch.setenv("VISION_AI_CORS_ORIGINS", " https://a.example.com , http://127.0.0.1:5500 ,")
+    assert Settings(_env_file=None).cors_origins == ["https://a.example.com", "http://127.0.0.1:5500"]
+    monkeypatch.setenv("VISION_AI_CORS_ORIGINS", "https://a.example.com,*")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_csv_export_neutralizes_formula_injection() -> None:
+    from app.api import csv_safe
+
+    assert csv_safe("=HYPERLINK(\"http://x\")") == "'=HYPERLINK(\"http://x\")"
+    assert csv_safe("+1+1") == "'+1+1"
+    assert csv_safe("-2+3") == "'-2+3"
+    assert csv_safe("@SUM(A1)") == "'@SUM(A1)"
+    assert csv_safe("\tcmd") == "'\tcmd"
+    assert csv_safe("\rcmd") == "'\rcmd"
+    assert csv_safe("Bàn phím cơ") == "Bàn phím cơ"
+    assert csv_safe(0.97) == 0.97
+
+
+def test_csv_export_escapes_malicious_label_end_to_end() -> None:
+    with TestClient(app) as client:
+        register(client, "csv-injection@example.com")
+        metadata = {"primary_label": "=cmd|' /C calc'!A0", "confidence": 0.9, "model_version": "@evil"}
+        created = client.post(
+            "/api/scans",
+            files={"file": ("x.png", png_file(), "image/png")},
+            data={"metadata": json.dumps(metadata)},
+        )
+        assert created.status_code == 201, created.text
+        exported = client.get(f"/api/scans/{created.json()['id']}/export?format=csv")
+        assert exported.status_code == 200
+        body = exported.content.decode("utf-8-sig")
+        assert "'=cmd|' /C calc'!A0" in body
+        assert ",'@evil," in body
+
+
+def test_security_headers_include_csp_without_unsafe_eval() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/health")
+        policy = response.headers["content-security-policy"]
+        assert "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net" in policy
+        assert "script-src 'self' 'unsafe-inline'" not in policy
+        assert "frame-ancestors 'none'" in policy
+        assert "https://tfhub.dev" in policy and "https://storage.googleapis.com" in policy
+        assert "https://www.kaggle.com" in policy
+        assert "blob:" in policy
 
 
 def test_client_ip_ignores_spoofed_forwarded_header() -> None:
