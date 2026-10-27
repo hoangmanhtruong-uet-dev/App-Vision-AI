@@ -1,8 +1,8 @@
 FROM node:22-alpine AS frontend
 WORKDIR /src
 COPY package.json package-lock.json ./
-COPY index.html style.css script.js yolo-runtime.js manifest.webmanifest sw.js ./
-COPY assets ./assets
+RUN npm ci
+COPY frontend ./frontend
 COPY scripts ./scripts
 RUN npm run build
 

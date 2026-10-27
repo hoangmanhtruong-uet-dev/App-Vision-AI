@@ -19,6 +19,21 @@ os.environ["VISION_AI_ENVIRONMENT"] = "development"
 os.environ["VISION_AI_CORS_ORIGINS"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
+
+_original_testclient_request = TestClient.request
+
+
+def _browser_simulating_request(self, method, url, *args, **kwargs):
+    headers = dict(kwargs.get("headers") or {})
+    if "X-CSRF-Token" not in headers and "x-csrf-token" not in headers:
+        csrf = self.cookies.get("vision_csrf")
+        if csrf:
+            headers["X-CSRF-Token"] = csrf
+            kwargs["headers"] = headers
+    return _original_testclient_request(self, method, url, *args, **kwargs)
+
+
+TestClient.request = _browser_simulating_request
 import pyotp  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -565,3 +580,34 @@ def test_client_ip_ignores_spoofed_forwarded_header() -> None:
         "query_string": b"",
     })
     assert client_ip(request) == "10.0.0.5"
+
+
+def test_csrf_protection_rejects_missing_or_invalid_token() -> None:
+    with TestClient(app) as client:
+        register(client, "csrf-test@example.com")
+        assert "vision_csrf" in client.cookies
+        assert "vision_session" in client.cookies
+
+        # 1. Mutating request with invalid CSRF token -> 403
+        bad_res = client.post(
+            "/api/scans",
+            files={"file": ("keyboard.png", png_file(), "image/png")},
+            data={"metadata": json.dumps({"primary_label": "test"})},
+            headers={"X-CSRF-Token": "invalid-csrf-token"},
+        )
+        assert bad_res.status_code == 403
+        assert bad_res.json()["code"] == "csrf_invalid"
+
+        # 2. Mutating request with empty CSRF token -> 403
+        missing_res = client.post(
+            "/api/scans",
+            files={"file": ("keyboard.png", png_file(), "image/png")},
+            data={"metadata": json.dumps({"primary_label": "test"})},
+            headers={"X-CSRF-Token": ""},
+        )
+        assert missing_res.status_code == 403
+        assert missing_res.json()["code"] == "csrf_invalid"
+
+        # 3. Mutating request with matching valid CSRF token -> 201
+        good_scan = create_scan(client)
+        assert good_scan["primary_label"] == "mechanical keyboard"

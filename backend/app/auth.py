@@ -232,6 +232,19 @@ def is_https(request: Request) -> bool:
     return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0] == "https"
 
 
+def set_csrf_cookie(response: Response, request: Request, token: str | None = None) -> str:
+    csrf_token = token or secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=settings.csrf_cookie_name,
+        value=csrf_token,
+        httponly=False,
+        secure=is_https(request),
+        samesite="lax",
+        path="/",
+    )
+    return csrf_token
+
+
 def set_session_cookie(response: Response, request: Request, token: str, max_age: int | None) -> None:
     response.set_cookie(
         key=settings.session_cookie_name,
@@ -242,12 +255,20 @@ def set_session_cookie(response: Response, request: Request, token: str, max_age
         samesite="lax",
         path="/",
     )
+    set_csrf_cookie(response, request)
 
 
 def clear_session_cookie(response: Response, request: Request) -> None:
     response.delete_cookie(
         key=settings.session_cookie_name,
         httponly=True,
+        secure=is_https(request),
+        samesite="lax",
+        path="/",
+    )
+    response.delete_cookie(
+        key=settings.csrf_cookie_name,
+        httponly=False,
         secure=is_https(request),
         samesite="lax",
         path="/",
@@ -472,7 +493,9 @@ def logout(
 
 
 @router.get("/me", response_model=UserResponse)
-def me(user: CurrentUser) -> User:
+def me(user: CurrentUser, request: Request, response: Response) -> User:
+    if settings.csrf_cookie_name not in request.cookies:
+        set_csrf_cookie(response, request)
     return user
 
 

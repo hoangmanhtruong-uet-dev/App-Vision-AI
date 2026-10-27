@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
+const frontend = resolve(root, 'frontend');
 const dist = resolve(root, 'dist');
 const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 
@@ -26,7 +27,7 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
 for (const file of ['index.html', 'style.css', 'script.js', 'yolo-runtime.js', 'manifest.webmanifest', 'sw.js']) {
-  await cp(resolve(root, file), resolve(dist, file));
+  await cp(resolve(frontend, file), resolve(dist, file));
 }
 
 for (const file of ['index.html', 'script.js', 'sw.js']) {
@@ -35,7 +36,7 @@ for (const file of ['index.html', 'script.js', 'sw.js']) {
   for (const [token, value] of replacements) contents = contents.replaceAll(token, value);
   await writeFile(target, contents, 'utf8');
 }
-await cp(resolve(root, 'assets'), resolve(dist, 'assets'), { recursive: true });
+await cp(resolve(frontend, 'assets'), resolve(dist, 'assets'), { recursive: true });
 await mkdir(resolve(dist, 'vendor'), { recursive: true });
 for (const file of [
   'ort.webgpu.min.js',
@@ -46,6 +47,9 @@ for (const file of [
   'ort-wasm-simd-threaded.jsep.wasm',
 ]) {
   await cp(resolve(root, 'node_modules', 'onnxruntime-web', 'dist', file), resolve(dist, 'vendor', file));
+}
+for (const file of ['tf.min.js', 'mobilenet.min.js', 'coco-ssd.min.js']) {
+  await cp(resolve(frontend, 'vendor', file), resolve(dist, 'vendor', file));
 }
 
 console.log(`Vision AI v${packageJson.version}+${buildId} production build completed: dist/`);

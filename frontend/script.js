@@ -143,15 +143,29 @@
     setTimeout(() => node.remove(), 3600);
   }
 
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
+    return match ? decodeURIComponent(match[3]) : null;
+  }
+
   async function api(path, options = {}) {
-    const { timeoutMs = path === '/analysis/advanced' ? 60000 : 30000, ...fetchOptions } = options;
+    const { timeoutMs = path === '/analysis/advanced' ? 60000 : 30000, headers: customHeaders, ...fetchOptions } = options;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const headers = new Headers(customHeaders || {});
+    const method = (fetchOptions.method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const csrfToken = getCookie('vision_csrf');
+      if (csrfToken && !headers.has('X-CSRF-Token')) {
+        headers.set('X-CSRF-Token', csrfToken);
+      }
+    }
     let response;
     try {
       response = await fetch(`${API_BASE}${path}`, {
         credentials: 'include',
         ...fetchOptions,
+        headers,
         signal: controller.signal,
       });
       state.backendOnline = true;

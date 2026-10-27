@@ -40,6 +40,8 @@ jobs:
       - name: Verify migration rollback and replay
         working-directory: backend
         run: alembic downgrade base && alembic upgrade head
+      - name: Run database health diagnostic
+        run: npm run check:db
       - name: Run backend tests
         working-directory: backend
         run: pytest -q

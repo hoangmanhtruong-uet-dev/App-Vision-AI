@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -104,6 +105,26 @@ async def security_headers(request: Request, call_next):
             request, 429, "Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau.",
             "rate_limited", {"Retry-After": str(retry_after)},
         )
+    method = request.method.upper()
+    if method in {"POST", "PUT", "PATCH", "DELETE"}:
+        session_cookie = request.cookies.get(settings.session_cookie_name)
+        auth_header = request.headers.get("authorization", "")
+        if session_cookie and not auth_header.startswith("Bearer "):
+            exempt_paths = {
+                f"{settings.api_prefix}/auth/login",
+                f"{settings.api_prefix}/auth/register",
+                f"{settings.api_prefix}/auth/forgot-password",
+                f"{settings.api_prefix}/auth/reset-password",
+                f"{settings.api_prefix}/auth/verify-email",
+            }
+            if request.url.path not in exempt_paths:
+                cookie_csrf = request.cookies.get(settings.csrf_cookie_name)
+                header_csrf = request.headers.get(settings.csrf_header_name) or request.headers.get("x-csrf-token")
+                if not cookie_csrf or not header_csrf or not secrets.compare_digest(cookie_csrf, header_csrf):
+                    return error_response(
+                        request, 403, "CSRF token không hợp lệ hoặc bị thiếu. Vui lòng làm mới trang.",
+                        "csrf_invalid",
+                    )
     try:
         response = await asyncio.wait_for(call_next(request), timeout=settings.api_timeout_seconds)
     except TimeoutError:
@@ -119,8 +140,21 @@ async def security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(self), microphone=()"
     if request.url.path.startswith(f"{settings.api_prefix}/auth"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path.endswith((".onnx", ".wasm")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path.startswith("/vendor/"):
+        response.headers["Cache-Control"] = "public, max-age=2592000"
     if request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").startswith("https"):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if method == "GET" and settings.csrf_cookie_name not in request.cookies:
+        response.set_cookie(
+            key=settings.csrf_cookie_name,
+            value=secrets.token_urlsafe(32),
+            httponly=False,
+            secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").startswith("https"),
+            samesite="lax",
+            path="/",
+        )
     return response
 
 if (frontend_dist.is_dir()):

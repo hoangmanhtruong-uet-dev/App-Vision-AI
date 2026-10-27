@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "assets" / "icons"
+OUTPUT = ROOT / "frontend" / "assets" / "icons"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 

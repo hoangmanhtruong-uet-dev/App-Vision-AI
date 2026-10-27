@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check script.js && node --check yolo-runtime.js && node --check scripts/smoke-production.mjs",
+    "check": "node --check frontend/script.js && node --check frontend/yolo-runtime.js && node --check scripts/check-database.mjs && node --check scripts/smoke-production.mjs",
     "check:yolo": "node scripts/check-yolo.mjs",
-    "smoke:production": "node scripts/smoke-production.mjs"
+    "check:db": "node scripts/check-database.mjs",
+    "smoke:production": "node scripts/smoke-production.mjs",
+    "start": "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000",
+    "dev": "python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000"
   },
   "dependencies": {
     "onnxruntime-web": "1.27.0"

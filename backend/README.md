@@ -56,4 +56,12 @@ SQLite được lưu ở `backend/data/vision_ai.db`; ảnh ở `backend/data/up
 pytest -q
 ```
 
-Backend hiện là chế độ một người dùng, phù hợp MVP/local. Trước khi đưa lên Internet cần bổ sung đăng nhập, phân quyền, migration Alembic, object storage và PostgreSQL.
+## Trạng thái hệ thống
+
+Backend đã được hoàn thiện đầy đủ các tính năng sẵn sàng cho môi trường Production:
+- **Xác thực & Phân quyền**: Đăng ký, đăng nhập, phân quyền Owner/Admin/Member, API Keys, quản lý phiên và TOTP 2FA.
+- **Bảo mật**: Rate limiting đa tầng, CSRF/CORS chặt chẽ, cookie HttpOnly/SameSite Lax, CSP bảo vệ trình duyệt.
+- **Cơ sở dữ liệu**: Hỗ trợ SQLite (dev/test) và PostgreSQL qua SQLAlchemy 2.0 & Alembic migrations.
+- **Lưu trữ ảnh**: Cloudinary storage với cơ chế xóa an toàn (delete-first) và fallback thư mục cục bộ.
+- **AI Đám mây**: Tích hợp Google Gemini 3.5 Flash phân tích chuyên sâu có giới hạn quota và bảo vệ quyền riêng tư.
+- **Thông báo**: Hỗ trợ Resend API và SMTP cho email kích hoạt / đổi mật khẩu.

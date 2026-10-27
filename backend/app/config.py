@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     max_image_pixels: int = Field(default=20 * 1024 * 1024, ge=1_000_000)
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     session_cookie_name: str = "vision_session"
+    csrf_cookie_name: str = "vision_csrf"
+    csrf_header_name: str = "X-CSRF-Token"
     session_hours: int = Field(default=24, ge=1, le=168)
     remember_session_days: int = Field(default=30, ge=1, le=90)
     encryption_key: str | None = None
@@ -73,7 +75,11 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
-        if value.startswith("postgres://"):
+        if value.startswith("sqlite:///") and not Path(value.replace("sqlite:///", "", 1)).is_absolute():
+            rel_path = value.replace("sqlite:///", "", 1)
+            resolved = (BACKEND_DIR / rel_path) if not rel_path.startswith("backend/") else (BACKEND_DIR.parent / rel_path)
+            value = f"sqlite:///{resolved.resolve().as_posix()}"
+        elif value.startswith("postgres://"):
             value = value.replace("postgres://", "postgresql+psycopg://", 1)
         elif value.startswith("postgresql://"):
             value = value.replace("postgresql://", "postgresql+psycopg://", 1)
